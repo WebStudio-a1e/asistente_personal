@@ -1,0 +1,245 @@
+version: v2.1
+project: asistente_personal
+timezone: America/Montevideo
+architecture: multiagent_langgraph
+
+# ─────────────────────────────────────────────────────────────
+# AgentState — estado compartido entre todos los nodos
+# ─────────────────────────────────────────────────────────────
+agent_state:
+  fields:
+    message:              "str"
+    intent:               "task | idea | agenda | accounting | query | unknown | null"
+    domain:               "tasks | ideas | agenda | accounting | reporting | unknown | null"
+    payload:              "dict | null"
+    confirmation_status:  "detected | proposed | awaiting_confirmation | confirmed | rejected | persisted | failed | expired | null"
+    pending_actions:      "list[dict]   # mensajes multi-intención"
+    agent_response:       "str | null"
+    conversation_history: "list"
+    idempotency_key:      "str | null"
+    error:                "str | null"
+
+# ─────────────────────────────────────────────────────────────
+# Grafo LangGraph
+# ─────────────────────────────────────────────────────────────
+graph:
+  entry_point: orchestrator
+  checkpointer: SqliteSaver
+  thread_id_source: twilio_sender_number
+
+  nodes:
+    - id: orchestrator
+      role: Clasifica intención y dominio. Rutea al agente correcto. Descompone multi-intención en pending_actions.
+      llm_env: LLM_ORCHESTRATOR
+      routes_to:
+        - tasks_agent
+        - ideas_agent
+        - agenda_agent
+        - accounting_agent
+        - reporting_agent
+        - END           # intención ambigua → pide aclaración directo
+
+    - id: tasks_agent
+      role: Propone payload de tarea. No persiste directamente.
+      llm_env: LLM_TASKS
+      tools: [sheets_read_tasks, sheets_propose_task]
+      routes_to: [confirmation_node]
+
+    - id: ideas_agent
+      role: Propone payload de idea. No persiste directamente.
+      llm_env: LLM_IDEAS
+      tools: [docs_read_ideas, docs_propose_idea]
+      routes_to: [confirmation_node]
+
+    - id: agenda_agent
+      role: Propone payload de evento/recordatorio. No persiste directamente.
+      llm_env: LLM_AGENDA
+      tools: [calendar_read_events, calendar_propose_event]
+      routes_to: [confirmation_node]
+
+    - id: accounting_agent
+      role: Propone payload de movimiento contable. No persiste directamente.
+      llm_env: LLM_ACCOUNTING
+      tools: [sheets_read_accounting, sheets_propose_entry]
+      routes_to: [confirmation_node]
+
+    - id: reporting_agent
+      role: Responde consultas complejas cruzando dominios. Solo lectura. No pasa por confirmation_node.
+      llm_env: LLM_REPORTING
+      tools: [sheets_read_tasks, sheets_read_accounting, docs_read_ideas, calendar_read_events]
+      routes_to: [END]
+
+    - id: confirmation_node
+      role: Envía propuesta al usuario. Espera confirmación. Normaliza respuesta. Gestiona timeout 30min.
+      routes_to:
+        - persist_node    # si confirmed
+        - orchestrator    # si rejected → el agente puede reencuadrar
+        - END             # si expired
+
+    - id: persist_node
+      role: Ejecuta escritura en la fuente de verdad del dominio correspondiente.
+      tools:
+        - sheets_write_task
+        - sheets_write_accounting
+        - docs_write_idea
+        - calendar_write_event
+      routes_to: [END]
+
+# ─────────────────────────────────────────────────────────────
+# Máquina 1 — Confirmación
+# ─────────────────────────────────────────────────────────────
+machines:
+  confirmation_flow:
+    description: Flujo obligatorio para toda acción persistente. reporting_agent está exento.
+    initial_state: detected
+    states:
+      - detected
+      - proposed
+      - awaiting_confirmation
+      - confirmed
+      - rejected
+      - persisted
+      - failed
+      - expired
+    transitions:
+      - from: detected
+        to: proposed
+        trigger: agent_proposes_payload
+      - from: proposed
+        to: awaiting_confirmation
+        trigger: proposal_sent_to_user
+      - from: awaiting_confirmation
+        to: confirmed
+        trigger: user_confirms
+      - from: awaiting_confirmation
+        to: rejected
+        trigger: user_rejects
+      - from: awaiting_confirmation
+        to: expired
+        trigger: confirmation_timeout        # 30 minutos desde proposal_sent_at
+      - from: confirmed
+        to: persisted
+        trigger: persistence_success
+      - from: confirmed
+        to: failed
+        trigger: persistence_error
+      - from: rejected
+        to: proposed
+        trigger: system_reframes_proposal
+      - from: failed
+        to: proposed
+        trigger: retry_allowed
+    rules:
+      - No persistence is allowed before state=confirmed
+      - If state=expired, persistence is forbidden under any circumstance
+      - If user rejects, previous proposal must not be persisted
+      - Timeout is exactly 30 minutes from proposal_sent_at
+      - reporting_agent bypasses this flow entirely — read-only, no confirmation needed
+
+# ─────────────────────────────────────────────────────────────
+# Máquina 2 — Recordatorios
+# ─────────────────────────────────────────────────────────────
+  reminder_lifecycle:
+    description: Flujo de recordatorios gestionado por agenda_agent + APScheduler
+    initial_state: scheduled
+    states:
+      - scheduled
+      - due
+      - sent
+      - acknowledged
+      - missed
+      - failed
+    transitions:
+      - from: scheduled
+        to: due
+        trigger: scheduler_detects_due_window
+      - from: due
+        to: sent
+        trigger: whatsapp_send_success
+      - from: due
+        to: failed
+        trigger: whatsapp_send_error
+      - from: sent
+        to: acknowledged
+        trigger: user_acknowledges
+      - from: due
+        to: missed
+        trigger: due_window_passed_without_send
+      - from: failed
+        to: missed
+        trigger: retry_not_allowed_or_window_expired
+    rules:
+      - Reminder jobs are valid only under single active scheduler instance
+      - Late reminders are not resent retroactively by default
+      - A reminder must not be sent twice for the same due occurrence
+
+# ─────────────────────────────────────────────────────────────
+# Máquina 3 — Deduplicación de webhooks
+# ─────────────────────────────────────────────────────────────
+  webhook_deduplication:
+    description: Control de idempotencia para eventos entrantes de Twilio
+    initial_state: received
+    states:
+      - received
+      - dedupe_check
+      - duplicate
+      - accepted
+      - processed
+      - ignored
+      - failed
+    transitions:
+      - from: received
+        to: dedupe_check
+        trigger: event_logged
+      - from: dedupe_check
+        to: duplicate
+        trigger: idempotency_key_already_seen
+      - from: dedupe_check
+        to: accepted
+        trigger: idempotency_key_new
+      - from: accepted
+        to: processed
+        trigger: event_handled_successfully
+      - from: accepted
+        to: failed
+        trigger: event_handling_error
+      - from: duplicate
+        to: ignored
+        trigger: duplicate_safely_discarded
+    rules:
+      - Use provider event id when available; fallback to hash(sender+timestamp+body)
+      - Duplicate events must not produce duplicate persistence
+      - Duplicate confirmations must not produce duplicate writes
+      - Every accepted event must be traceable in SQLite processed_events
+
+# ─────────────────────────────────────────────────────────────
+# Señales de confirmación reconocidas
+# ─────────────────────────────────────────────────────────────
+confirmation_signals:
+  positive:  ["sí", "si", "ok", "dale", "hacelo", "confirmo", "correcto", "exacto", "perfecto", "adelante", "sí eso"]
+  negative:  ["no", "cancelá", "cancela", "rechazo", "no confirmo", "no era eso", "eso no", "para", "stop"]
+  ambiguous: ["mmm", "puede ser", "creo que sí", "después", "más o menos", "tal vez", "no sé"]
+
+# ─────────────────────────────────────────────────────────────
+# Políticas globales
+# ─────────────────────────────────────────────────────────────
+policies:
+  persistence:
+    - No agent writes to Sheets, Docs or Calendar without state=confirmed
+    - reporting_agent has no write tools — architecturally cannot persist
+  timeout:
+    - Confirmation expires 30 minutes from proposal_sent_at
+    - Expired proposals must not be persisted under any circumstance
+  multi_intent:
+    - orchestrator decomposes multi-intent messages into pending_actions
+    - system proposes and confirms each action separately
+    - no action persists without its own individual confirmation
+  idempotency:
+    - every inbound Twilio event passes dedupe_check before invoking the graph
+    - idempotency key registered in SQLite before any persistence
+  scheduler:
+    - single active instance only for MVP
+    - if multiple workers are deployed, scheduler must be redesigned
+  llm_config:
+    - each agent reads its LLM from environment variable
+    - changing an agent LLM requires no code change

@@ -1,0 +1,699 @@
+project:
+  name: asistente_personal
+  version: v2.1
+  status: active
+  methodology: W-CVC
+  timezone: America/Montevideo
+  architecture: multiagent_langgraph
+
+current_state:
+  current_phase: FASE_1A
+  current_task: T-001
+  go_condition:
+    - docs/PRD_PROYECTO_ACTIVO.md commiteado
+    - CLAUDE.md commiteado
+    - WORKPLAN.yaml commiteado
+    - .env.example commiteado
+
+status_legend:
+  ready:       "Puede ejecutarse ahora"
+  blocked:     "Tiene dependencias pendientes"
+  in_progress: "Se está ejecutando"
+  done:        "Terminada y verificada"
+
+phases:
+  - id: FASE_1A
+    name: Base operativa container-first
+    gate: >
+      docker compose up levanta,
+      GET /health responde 200 desde host en http://localhost:8000/health,
+      config carga todos los LLMs y variables,
+      pytest smoke pasa dentro del contenedor
+
+  - id: FASE_1B
+    name: Grafo base y contratos de dominio
+    gate: >
+      AgentState definido,
+      grafo LangGraph compila con nodos placeholder,
+      SqliteSaver conectado,
+      dominio (intents, schemas, confirmation) commiteado
+
+  - id: FASE_2
+    name: Orquestador y confirmación
+    gate: >
+      orchestrator clasifica y rutea correctamente en español,
+      confirmation_node gestiona confirmed/rejected/expired,
+      LLM factory operativo
+
+  - id: FASE_3
+    name: Agentes especializados y conectores reales
+    gate: >
+      los 4 agentes leen y escriben en sus fuentes reales,
+      confirmación previa funcionando en cada dominio
+
+  - id: FASE_4
+    name: WhatsApp e idempotencia
+    gate: >
+      webhook recibe mensaje Twilio,
+      dedupe check funciona,
+      grafo procesa el mensaje,
+      el dato se persiste exactamente una vez
+
+  - id: FASE_5
+    name: Reporting y consultas complejas
+    gate: >
+      reporting_agent responde consultas cruzadas correctamente,
+      nunca persiste
+
+  - id: FASE_6
+    name: Scheduler y recordatorios
+    gate: >
+      recordatorios salen a horario en America/Montevideo,
+      missed funciona correctamente
+
+  - id: FASE_7
+    name: Validación y deploy
+    gate: >
+      todos los Acceptance Criteria verificados,
+      deploy en Railway o Render operativo
+
+tasks:
+
+  # ══════════════════════════════════════════════
+  # FASE 1A — Base operativa container-first
+  # Orden obligatorio: repo → deps → Docker → config → app → tests
+  # ══════════════════════════════════════════════
+
+  - id: T-001
+    phase: FASE_1A
+    title: Estructura base + entorno Docker completo
+    status: ready
+    depends_on: []
+    artifacts_touched:
+      - src/__init__.py
+      - src/agents/__init__.py
+      - src/graph/__init__.py
+      - src/domain/__init__.py
+      - src/connectors/__init__.py
+      - src/storage/__init__.py
+      - src/scheduler/__init__.py
+      - tests/__init__.py
+      - docs/AUDIT_REPORTS/.gitkeep
+      - credentials/.gitkeep
+      - data/.gitkeep
+      - .claude/.gitkeep
+      - requirements.txt
+      - Dockerfile
+      - docker-compose.yml
+    commands_allowlist:
+      - mkdir
+      - New-Item
+      - Copy-Item .env.example .env
+      - docker build -t asistente_personal:dev .
+      - docker compose up --build -d
+      - docker compose down
+      - docker compose logs
+    done_when:
+      - árbol de carpetas creado con __init__.py vacíos en src/ y subdirectorios
+      - requirements.txt con todo el stack (langgraph, langchain-*, fastapi, uvicorn, anthropic, openai, google-generativeai, twilio, gspread, google-api-python-client, google-auth, apscheduler, pytest, ruff)
+      - Dockerfile basado en python:3.11-slim, instala requirements.txt y define un entorno base de desarrollo levantable
+      - docker build exitoso sin errores
+      - docker compose up --build levanta sin errores
+      - .env local creado a partir de .env.example antes de docker compose up --build -d
+      - docker compose puede levantar con variables mínimas definidas desde .env
+      - volumen para data/ (SQLite) definido
+      - servicio expone puerto 8000
+
+  - id: T-002
+    phase: FASE_1A
+    title: Config centralizada
+    status: blocked
+    depends_on: [T-001]
+    artifacts_touched:
+      - src/config.py
+      - tests/test_config.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_config.py -v
+      - docker compose exec app ruff check src/config.py
+    done_when:
+      - Config carga LLM_ORCHESTRATOR, LLM_TASKS, LLM_IDEAS, LLM_AGENDA, LLM_ACCOUNTING, LLM_REPORTING
+      - Config carga ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_GEMINI_API_KEY, DEEPSEEK_API_KEY
+      - Config carga todas las variables de Twilio, Google, App y SQLite
+      - falla explícitamente con error claro si falta variable crítica
+      - tests pasan dentro del contenedor
+
+  - id: T-003
+    phase: FASE_1A
+    title: App FastAPI base con healthcheck
+    status: blocked
+    depends_on: [T-001, T-002]
+    artifacts_touched:
+      - src/main.py
+      - tests/test_main.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_main.py -v
+      - docker compose exec app ruff check src/main.py
+      - curl http://localhost:8000/health
+    done_when:
+      - GET /health responde 200 con JSON {"status":"ok"} — verificado con curl desde host
+      - sin implementación funcional adicional
+      - test pasa con docker compose exec
+
+  - id: T-004
+    phase: FASE_1A
+    title: Smoke tests dentro del contenedor
+    status: blocked
+    depends_on: [T-002, T-003]
+    artifacts_touched:
+      - tests/test_smoke.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_smoke.py -v
+    done_when:
+      - pytest pasa dentro del contenedor sin errores
+      - cubre healthcheck 200, config carga los 6 LLMs, app arranca
+
+  # ══════════════════════════════════════════════
+  # FASE 1B — Grafo base y contratos de dominio
+  # (ya completadas en bootstrap documental)
+  # ══════════════════════════════════════════════
+
+  - id: T-005
+    phase: FASE_1B
+    title: CLAUDE.md
+    status: done
+    depends_on: []
+    artifacts_touched: [CLAUDE.md]
+    done_when: [Arquitectura multiagente, LLMs, confirmación, container-first documentados]
+
+  - id: T-006
+    phase: FASE_1B
+    title: WORKPLAN.yaml
+    status: done
+    depends_on: []
+    artifacts_touched: [WORKPLAN.yaml]
+    done_when: [Todas las fases y tareas con statuses y commands_allowlist]
+
+  - id: T-007
+    phase: FASE_1B
+    title: docs/AcceptanceCriteria.md
+    status: done
+    depends_on: []
+    artifacts_touched: [docs/AcceptanceCriteria.md]
+    done_when: [ACs mapeados a PRD v2.1 con verification_type]
+
+  - id: T-008
+    phase: FASE_1B
+    title: docs/ThreatModel.md
+    status: done
+    depends_on: []
+    artifacts_touched: [docs/ThreatModel.md]
+    done_when: [10 amenazas con controles documentados]
+
+  - id: T-009
+    phase: FASE_1B
+    title: docs/DataHandling.md
+    status: done
+    depends_on: []
+    artifacts_touched: [docs/DataHandling.md]
+    done_when: [Rol dual SQLite, retención, borrado por dominio]
+
+  - id: T-010
+    phase: FASE_1B
+    title: docs/DECISION_FREEZE.md
+    status: done
+    depends_on: []
+    artifacts_touched: [docs/DECISION_FREEZE.md]
+    done_when: [Todas las decisiones congeladas]
+
+  - id: T-011
+    phase: FASE_1B
+    title: state_machine.yaml
+    status: done
+    depends_on: []
+    artifacts_touched: [state_machine.yaml]
+    done_when: [AgentState, grafo y 3 máquinas de estado definidos]
+
+  - id: T-012
+    phase: FASE_1B
+    title: docs/START_HERE.md
+    status: done
+    depends_on: []
+    artifacts_touched: [docs/START_HERE.md]
+    done_when: [Checklist de arranque con container-first]
+
+  - id: T-013
+    phase: FASE_1B
+    title: .env.example completo
+    status: done
+    depends_on: []
+    artifacts_touched: [.env.example]
+    done_when: [6 LLM_*, 4 API keys, Twilio, Google, App, SQLite]
+
+  - id: T-014
+    phase: FASE_1B
+    title: AgentState — src/graph/state.py
+    status: blocked
+    depends_on: [T-001]
+    artifacts_touched:
+      - src/graph/state.py
+      - tests/test_state.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_state.py -v
+      - docker compose exec app ruff check src/graph/state.py
+    done_when:
+      - AgentState como TypedDict con todos los campos del state_machine.yaml
+      - pending_actions incluido para multi-intención
+      - import test pasa dentro del contenedor
+
+  - id: T-015
+    phase: FASE_1B
+    title: LLM factory — src/graph/llm_factory.py
+    status: blocked
+    depends_on: [T-002]
+    artifacts_touched:
+      - src/graph/llm_factory.py
+      - tests/test_llm_factory.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_llm_factory.py -v
+      - docker compose exec app ruff check src/graph/llm_factory.py
+    done_when:
+      - get_llm(agent_name) retorna LLM correcto según variable de entorno
+      - soporta Claude, GPT-4o, Gemini, DeepSeek
+      - unit tests con mocks pasan dentro del contenedor
+
+  - id: T-016
+    phase: FASE_1B
+    title: Dominio — intents.py, schemas.py, confirmation.py
+    status: blocked
+    depends_on: [T-014]
+    artifacts_touched:
+      - src/domain/intents.py
+      - src/domain/schemas.py
+      - src/domain/confirmation.py
+      - tests/test_domain.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_domain.py -v
+      - docker compose exec app ruff check src/domain/
+    done_when:
+      - Enum Intent y Enum Domain definidos
+      - Schemas Pydantic para Task, Idea, Event, AccountingEntry alineados con DataHandling.md §3
+      - ConfirmationStatus enum alineado con state_machine.yaml
+      - Normalizador de señales positivas/negativas/ambiguas
+      - Lógica de timeout 30 minutos
+
+  - id: T-017
+    phase: FASE_1B
+    title: Bootstrap SQLite — src/storage/
+    status: blocked
+    depends_on: [T-001]
+    artifacts_touched:
+      - src/storage/sqlite.py
+      - src/storage/bootstrap.py
+      - tests/test_sqlite.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_sqlite.py -v
+      - docker compose exec app ruff check src/storage/
+    done_when:
+      - 6 tablas operativas creadas (inbound_messages, conversation_state, confirmation_requests, processed_events, reminder_jobs, audit_logs)
+      - SqliteSaver inicializable desde mismo SQLITE_DB_PATH
+      - bootstrap ejecutable sin errores dentro del contenedor
+
+  # ══════════════════════════════════════════════
+  # FASE 2 — Orquestador y confirmación
+  # ══════════════════════════════════════════════
+
+  - id: T-018
+    phase: FASE_2
+    title: Grafo LangGraph base con nodos placeholder
+    status: blocked
+    depends_on: [T-014, T-015, T-017]
+    artifacts_touched:
+      - src/graph/graph.py
+      - tests/test_graph_base.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_graph_base.py -v
+      - docker compose exec app ruff check src/graph/graph.py
+    done_when:
+      - StateGraph compilable con 8 nodos placeholder
+      - SqliteSaver conectado como checkpointer
+      - grafo invocable sin errores
+
+  - id: T-019
+    phase: FASE_2
+    title: orchestrator node
+    status: blocked
+    depends_on: [T-018, T-016]
+    artifacts_touched:
+      - src/agents/orchestrator.py
+      - tests/test_orchestrator.py
+      - tests/test_orchestrator_es.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_orchestrator.py tests/test_orchestrator_es.py -v
+      - docker compose exec app ruff check src/agents/orchestrator.py
+    done_when:
+      - clasifica intención y dominio correctamente en español
+      - rutea al agente según dominio
+      - pide aclaración ante ambigüedad
+      - descompone multi-intención en pending_actions
+
+  - id: T-020
+    phase: FASE_2
+    title: confirmation_node
+    status: blocked
+    depends_on: [T-018, T-016]
+    artifacts_touched:
+      - src/graph/confirmation_node.py
+      - tests/test_confirmation_node.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_confirmation_node.py -v
+      - docker compose exec app ruff check src/graph/confirmation_node.py
+    done_when:
+      - envía propuesta al usuario
+      - normaliza confirmación/rechazo/ambigüedad
+      - gestiona timeout de 30 minutos
+      - actualiza AgentState.confirmation_status correctamente
+      - flujo confirmed/rejected/expired cubierto en tests
+
+  # ══════════════════════════════════════════════
+  # FASE 3 — Agentes especializados y conectores
+  # ══════════════════════════════════════════════
+
+  - id: T-021
+    phase: FASE_3
+    title: Autenticación Google
+    status: blocked
+    depends_on: [T-002]
+    artifacts_touched:
+      - src/connectors/google_auth.py
+      - tests/test_google_auth.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_google_auth.py -v
+      - docker compose exec app ruff check src/connectors/google_auth.py
+    done_when:
+      - auth reutilizable para Sheets, Docs y Calendar
+
+  - id: T-022
+    phase: FASE_3
+    title: tasks_agent + sheets_tasks.py
+    status: blocked
+    depends_on: [T-019, T-021, T-016]
+    artifacts_touched:
+      - src/agents/tasks_agent.py
+      - src/connectors/sheets_tasks.py
+      - tests/test_tasks_agent.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_tasks_agent.py -v
+      - docker compose exec app ruff check src/agents/tasks_agent.py src/connectors/sheets_tasks.py
+    done_when:
+      - lee y propone tareas correctamente
+      - columnas kanban respetadas (Pendiente, En progreso, Hoy, Completada)
+      - borrado físico + log SQLite implementado
+      - propone payload correcto hacia confirmation_node
+
+  - id: T-023
+    phase: FASE_3
+    title: ideas_agent + docs_ideas.py
+    status: blocked
+    depends_on: [T-019, T-021, T-016]
+    artifacts_touched:
+      - src/agents/ideas_agent.py
+      - src/connectors/docs_ideas.py
+      - tests/test_ideas_agent.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_ideas_agent.py -v
+      - docker compose exec app ruff check src/agents/ideas_agent.py src/connectors/docs_ideas.py
+    done_when:
+      - lee y propone ideas en documento maestro con secciones
+      - propone tema, resumen, prioridad, tags
+      - borrado físico del bloque + log SQLite implementado
+
+  - id: T-024
+    phase: FASE_3
+    title: agenda_agent + calendar_client.py
+    status: blocked
+    depends_on: [T-019, T-021, T-016]
+    artifacts_touched:
+      - src/agents/agenda_agent.py
+      - src/connectors/calendar_client.py
+      - tests/test_agenda_agent.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_agenda_agent.py -v
+      - docker compose exec app ruff check src/agents/agenda_agent.py src/connectors/calendar_client.py
+    done_when:
+      - crea, edita, cancela (→ cancelled en Calendar) y consulta eventos
+      - timezone America/Montevideo aplicada en todo momento
+      - recurrentes aceptados
+
+  - id: T-025
+    phase: FASE_3
+    title: accounting_agent + sheets_accounting.py
+    status: blocked
+    depends_on: [T-019, T-021, T-016]
+    artifacts_touched:
+      - src/agents/accounting_agent.py
+      - src/connectors/sheets_accounting.py
+      - tests/test_accounting_agent.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_accounting_agent.py -v
+      - docker compose exec app ruff check src/agents/accounting_agent.py src/connectors/sheets_accounting.py
+    done_when:
+      - registra movimientos con tipo, categoría, monto, nota, id, fecha, balance
+      - edición agrega correction_note obligatoriamente
+      - no tiene herramienta de borrado
+      - test verifica que el intento de borrado falla
+
+  - id: T-026
+    phase: FASE_3
+    title: Tests integración agentes especializados
+    status: blocked
+    depends_on: [T-022, T-023, T-024, T-025]
+    artifacts_touched:
+      - tests/test_agents_integration.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_agents_integration.py -v
+    done_when:
+      - CRUD permitido cubierto por dominio
+      - borrado contable prohibido verificado
+      - correction_note verificada en edición contable
+
+  # ══════════════════════════════════════════════
+  # FASE 4 — WhatsApp e idempotencia
+  # ══════════════════════════════════════════════
+
+  - id: T-027
+    phase: FASE_4
+    title: twilio_client.py
+    status: blocked
+    depends_on: [T-002]
+    artifacts_touched:
+      - src/connectors/twilio_client.py
+      - tests/test_twilio_client.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_twilio_client.py -v
+      - docker compose exec app ruff check src/connectors/twilio_client.py
+    done_when:
+      - cliente configurable desde variables de entorno
+      - envío testeable con mock
+
+  - id: T-028
+    phase: FASE_4
+    title: Webhook POST /webhook + deduplicación
+    status: blocked
+    depends_on: [T-027, T-003, T-017]
+    artifacts_touched:
+      - src/main.py
+      - tests/test_webhook.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_webhook.py -v
+      - docker compose exec app ruff check src/main.py
+    done_when:
+      - POST /webhook recibe mensaje Twilio y responde 200
+      - genera clave de idempotencia (provider id → fallback hash)
+      - dedupe check en processed_events antes de invocar el grafo
+      - evento duplicado retorna 200 sin procesar
+
+  - id: T-029
+    phase: FASE_4
+    title: Webhook + grafo integrados
+    status: blocked
+    depends_on: [T-028, T-020]
+    artifacts_touched:
+      - src/main.py
+      - tests/test_graph_webhook.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_graph_webhook.py -v
+    done_when:
+      - webhook invoca el grafo con thread_id = número de WhatsApp
+      - SqliteSaver mantiene estado entre mensajes del mismo hilo
+      - respuesta del grafo se envía por Twilio
+
+  - id: T-030
+    phase: FASE_4
+    title: Tests flujo completo end-to-end con mocks
+    status: blocked
+    depends_on: [T-029, T-022, T-023, T-024, T-025]
+    artifacts_touched:
+      - tests/test_full_flow.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_full_flow.py -v
+    done_when:
+      - flujo completo mockeado para los 4 dominios persistentes
+      - confirmed / rejected / expired cubiertos
+
+  - id: T-031
+    phase: FASE_4
+    title: Tests idempotencia y edge cases
+    status: blocked
+    depends_on: [T-028]
+    artifacts_touched:
+      - tests/test_idempotency.py
+      - tests/test_edge_cases.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_idempotency.py tests/test_edge_cases.py -v
+    done_when:
+      - webhook duplicado no persiste dos veces
+      - doble confirmación no duplica escritura
+      - timeout de 30 minutos expira sin persistir
+      - multi-intención confirma una por una
+
+  # ══════════════════════════════════════════════
+  # FASE 5 — Reporting
+  # ══════════════════════════════════════════════
+
+  - id: T-032
+    phase: FASE_5
+    title: reporting_agent
+    status: blocked
+    depends_on: [T-021, T-022, T-023, T-024, T-025]
+    artifacts_touched:
+      - src/agents/reporting_agent.py
+      - tests/test_reporting_agent.py
+      - tests/test_reporting_queries.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_reporting_agent.py tests/test_reporting_queries.py -v
+      - docker compose exec app ruff check src/agents/reporting_agent.py
+    done_when:
+      - lee de los 4 dominios con herramientas de solo lectura
+      - no tiene herramientas de escritura
+      - no pasa por confirmation_node
+      - comparación gastos por categoría y período cubierta en tests
+      - resumen semanal/mensual contabilidad cubierto
+      - "qué tengo hoy" (agenda + tareas) cubierto
+      - productividad de tareas cubierta
+
+  - id: T-033
+    phase: FASE_5
+    title: Integrar reporting_agent en el grafo
+    status: blocked
+    depends_on: [T-032, T-018]
+    artifacts_touched:
+      - src/graph/graph.py
+      - tests/test_graph_reporting.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_graph_reporting.py -v
+      - docker compose exec app ruff check src/graph/graph.py
+    done_when:
+      - orquestador rutea intenciones query a reporting_agent
+      - reporting_agent responde sin pasar por confirmation_node
+      - flujo completo query → respuesta verificado
+
+  # ══════════════════════════════════════════════
+  # FASE 6 — Scheduler y recordatorios
+  # ══════════════════════════════════════════════
+
+  - id: T-034
+    phase: FASE_6
+    title: APScheduler integrado en app
+    status: blocked
+    depends_on: [T-003, T-017]
+    artifacts_touched:
+      - src/scheduler/jobs.py
+      - src/main.py
+      - tests/test_scheduler.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_scheduler.py -v
+      - docker compose exec app ruff check src/scheduler/jobs.py
+    done_when:
+      - scheduler arranca junto con la app sin bloquear
+      - instancia única garantizada
+
+  - id: T-035
+    phase: FASE_6
+    title: Job de revisión cada 15 minutos
+    status: blocked
+    depends_on: [T-034, T-024]
+    artifacts_touched:
+      - src/scheduler/jobs.py
+      - tests/test_scheduler_job.py
+      - tests/test_scheduler_simulation.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_scheduler_job.py tests/test_scheduler_simulation.py -v
+    done_when:
+      - job cada 15 minutos verificado
+      - recordatorios due enviados por Twilio en timezone correcta
+      - recordatorios vencidos marcados como missed
+      - tests con tiempo simulado pasan
+      - timezone America/Montevideo verificada
+
+  # ══════════════════════════════════════════════
+  # FASE 7 — Validación y deploy
+  # ══════════════════════════════════════════════
+
+  - id: T-036
+    phase: FASE_7
+    title: Tests end-to-end y validación de ACs
+    status: blocked
+    depends_on: [T-030, T-032, T-035]
+    artifacts_touched:
+      - tests/test_e2e.py
+      - tests/test_timezone.py
+      - tests/test_confirmation_integrity.py
+      - docs/AcceptanceCriteria.md
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_e2e.py tests/test_timezone.py tests/test_confirmation_integrity.py -v
+    done_when:
+      - flujos críticos de los 5 agentes cubiertos
+      - America/Montevideo verificada en scheduler y agenda
+      - ningún agente escribe sin pasar por confirmation_node
+      - reporting_agent verificado como solo lectura
+      - todos los ACs marcados con estado real en AcceptanceCriteria.md
+
+  - id: T-037
+    phase: FASE_7
+    title: Smoke de conectores en entorno real
+    status: blocked
+    depends_on: [T-036]
+    artifacts_touched:
+      - tests/test_connectors_smoke.py
+    commands_allowlist:
+      - docker compose exec app pytest tests/test_connectors_smoke.py -v
+    done_when:
+      - Sheets, Docs, Calendar y Twilio responden en entorno real
+
+  - id: T-038
+    phase: FASE_7
+    title: Deploy en Railway o Render
+    status: blocked
+    depends_on: [T-036, T-037]
+    artifacts_touched:
+      - docs/AUDIT_REPORTS/
+    commands_allowlist:
+      - git push
+    done_when:
+      - entorno desplegado y accesible
+      - variables de entorno configuradas en la plataforma
+      - instancia única de scheduler confirmada
+
+  - id: T-039
+    phase: FASE_7
+    title: Smoke test en producción
+    status: blocked
+    depends_on: [T-038]
+    artifacts_touched:
+      - docs/AUDIT_REPORTS/
+    commands_allowlist:
+      - curl
+    done_when:
+      - GET /health responde 200 en producción
+      - webhook recibe mensaje de prueba
+      - flujo mínimo verificado en producción

@@ -1,0 +1,44 @@
+# ─── Entorno ───────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Credenciales (NUNCA commitear) ────────────
+credentials/
+
+# ─── Base de datos local ────────────────────────
+data/
+
+# ─── Python ─────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ─── Testing ────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ─── Linting ────────────────────────────────────
+.ruff_cache/
+
+# ─── Entornos virtuales ─────────────────────────
+.venv/
+venv/
+env/
+
+# ─── IDE ────────────────────────────────────────
+.vscode/
+.idea/
+
+# ─── Claude Code (personal, no del equipo) ──────
+.claude/settings.local.json
+
+# ─── OS ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
