@@ -4,10 +4,12 @@
 !.env.example
 
 # ─── Credenciales (NUNCA commitear) ────────────
-credentials/
+credentials/*
+!credentials/.gitkeep
 
 # ─── Base de datos local ────────────────────────
-data/
+data/*
+!data/.gitkeep
 
 # ─── Python ─────────────────────────────────────
 __pycache__/
