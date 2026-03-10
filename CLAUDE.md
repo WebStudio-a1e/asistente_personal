@@ -222,10 +222,16 @@ Python 3.11+ · FastAPI · LangGraph · langchain-core · langchain-anthropic ·
 
 ## 17) Estado actual del proyecto
 
-**Fase activa:** FASE_1A — Base operativa container-first
-**Próxima tarea READY:** T-001 — Estructura base + entorno Docker completo
+**Fase activa:** FASE_1B — Grafo base y contratos de dominio
+**Próxima tarea READY:** T-014 — AgentState (`src/graph/state.py`)
 
-**Completado en bootstrap (antes de T-001):**
+**FASE_1A — cerrada:**
+- [x] T-001  carpetas + `requirements.txt` + `Dockerfile` + `docker compose up --build` funciona
+- [x] T-002  `src/config.py` carga todos los LLMs y variables
+- [x] T-003  `GET /health` responde 200 desde host en http://localhost:8000/health
+- [x] T-004  pytest smoke pasa dentro del contenedor
+
+**Completado en bootstrap:**
 - [x] T-005  CLAUDE.md
 - [x] T-006  WORKPLAN.yaml
 - [x] T-007  AcceptanceCriteria.md
@@ -236,11 +242,11 @@ Python 3.11+ · FastAPI · LangGraph · langchain-core · langchain-anthropic ·
 - [x] T-012  START_HERE.md
 - [x] T-013  .env.example
 
-**Gate de salida FASE_1A — pendiente:**
-- [ ] T-001  carpetas + `requirements.txt` + `Dockerfile` + `docker compose up --build` funciona
-- [ ] T-002  `src/config.py` carga todos los LLMs y variables
-- [ ] T-003  `GET /health` responde 200 desde host en http://localhost:8000/health
-- [ ] T-004  pytest smoke pasa dentro del contenedor
+**Gate de salida FASE_1B — pendiente:**
+- [ ] T-014  `src/graph/state.py` — AgentState TypedDict
+- [ ] T-015  `src/graph/llm_factory.py` — LLM factory
+- [ ] T-016  `src/domain/` — intents, schemas, confirmation
+- [ ] T-017  `src/storage/` — bootstrap SQLite
 
 ---
 

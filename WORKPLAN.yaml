@@ -7,8 +7,8 @@ project:
   architecture: multiagent_langgraph
 
 current_state:
-  current_phase: FASE_1A
-  current_task: T-001
+  current_phase: FASE_1B
+  current_task: T-014
   go_condition:
     - docs/PRD_PROYECTO_ACTIVO.md commiteado
     - CLAUDE.md commiteado
@@ -87,7 +87,7 @@ tasks:
   - id: T-001
     phase: FASE_1A
     title: Estructura base + entorno Docker completo
-    status: ready
+    status: done
     depends_on: []
     artifacts_touched:
       - src/__init__.py
@@ -127,7 +127,7 @@ tasks:
   - id: T-002
     phase: FASE_1A
     title: Config centralizada
-    status: blocked
+    status: done
     depends_on: [T-001]
     artifacts_touched:
       - src/config.py
@@ -145,7 +145,7 @@ tasks:
   - id: T-003
     phase: FASE_1A
     title: App FastAPI base con healthcheck
-    status: blocked
+    status: done
     depends_on: [T-001, T-002]
     artifacts_touched:
       - src/main.py
@@ -162,7 +162,7 @@ tasks:
   - id: T-004
     phase: FASE_1A
     title: Smoke tests dentro del contenedor
-    status: blocked
+    status: done
     depends_on: [T-002, T-003]
     artifacts_touched:
       - tests/test_smoke.py
@@ -252,7 +252,7 @@ tasks:
   - id: T-014
     phase: FASE_1B
     title: AgentState — src/graph/state.py
-    status: blocked
+    status: ready
     depends_on: [T-001]
     artifacts_touched:
       - src/graph/state.py
