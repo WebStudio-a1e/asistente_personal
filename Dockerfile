@@ -17,5 +17,4 @@ COPY . .
 # Puerto expuesto
 EXPOSE 8000
 
-# Placeholder hasta T-003 (src/main.py + uvicorn)
-CMD ["python", "-c", "import time; print('Container ready — waiting for T-003'); time.sleep(86400)"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
