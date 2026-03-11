@@ -5,16 +5,27 @@ import logging
 import os
 import sqlite3
 import urllib.parse
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
 
 from src.connectors.twilio_client import get_twilio_client, send_whatsapp_message
 from src.graph.graph import build_graph
+from src.scheduler.jobs import start_scheduler, stop_scheduler
 from src.storage.sqlite import create_tables, get_connection
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="asistente_personal", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Gestiona el ciclo de vida de la app: inicia y detiene el scheduler."""
+    start_scheduler()
+    yield
+    stop_scheduler()
+
+
+app = FastAPI(title="asistente_personal", version="0.1.0", lifespan=lifespan)
 
 
 # ── Dependencias ──────────────────────────────────────────────
