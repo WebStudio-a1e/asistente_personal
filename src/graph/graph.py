@@ -1,6 +1,12 @@
-"""Grafo LangGraph — StateGraph con 8 nodos placeholder.
+"""Grafo LangGraph — StateGraph con SqliteSaver como checkpointer.
 
-Nodos funcionales se implementan en FASE_2+.
+Nodos funcionales implementados:
+  - reporting_agent_node (T-033)
+
+Nodos aún placeholder (FASE_2+):
+  - orchestrator_node, tasks_agent_node, ideas_agent_node,
+    agenda_agent_node, accounting_agent_node, confirmation_node, persist_node
+
 Checkpointer: SqliteSaver desde SQLITE_DB_PATH.
 Entry point: orchestrator.
 """
@@ -8,6 +14,7 @@ Entry point: orchestrator.
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, StateGraph
 
+from src.agents.reporting_agent import reporting_agent_node
 from src.config import load_config
 from src.graph.state import AgentState
 from src.storage.sqlite import create_tables, get_connection
@@ -33,10 +40,6 @@ def agenda_agent_node(state: AgentState) -> dict:
 
 
 def accounting_agent_node(state: AgentState) -> dict:
-    return {}
-
-
-def reporting_agent_node(state: AgentState) -> dict:
     return {}
 
 
