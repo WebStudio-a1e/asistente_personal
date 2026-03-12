@@ -24,7 +24,7 @@ from src.storage.sqlite import create_tables, get_connection
 
 
 def orchestrator_node(state: AgentState) -> dict:
-    return {"agent_response": "Hola, soy tu asistente. Estoy en línea. (modo prueba)"}
+    return {"domain": "reporting"}
 
 
 def tasks_agent_node(state: AgentState) -> dict:
