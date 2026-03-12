@@ -133,18 +133,20 @@ async def webhook(
         )
 
     # Invocar el grafo — thread_id = From (número de WhatsApp del remitente)
-    result = graph.invoke(
-        {
-            "message": body,
-            "idempotency_key": idem_key,
-            "pending_actions": [],
-            "conversation_history": [],
-        },
-        config={"configurable": {"thread_id": from_number}},
-    )
-
-    # Enviar respuesta por Twilio si el grafo generó una
-    agent_response = result.get("agent_response")
+    try:
+        result = graph.invoke(
+            {
+                "message": body,
+                "idempotency_key": idem_key,
+                "pending_actions": [],
+                "conversation_history": [],
+            },
+            config={"configurable": {"thread_id": from_number}},
+        )
+        agent_response = result.get("agent_response")
+    except Exception as exc:
+        logger.exception("webhook: error en graph.invoke — %s", exc)
+        agent_response = "Error interno. Por favor intentá de nuevo."
     if agent_response and twilio_client:
         send_whatsapp_message(
             twilio_client,
