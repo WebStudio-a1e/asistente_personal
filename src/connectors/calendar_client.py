@@ -120,7 +120,7 @@ def read_events(
             calendarId=calendar_id,
             timeMin=now_utc,
             maxResults=max_results,
-            singleEvents=False,
+            singleEvents=True,
             orderBy="startTime",
         )
         .execute()
