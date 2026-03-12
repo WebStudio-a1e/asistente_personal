@@ -1,0 +1,31 @@
+# docker-compose.override.example.yml
+#
+# Para entornos con SSL inspection (proxy corporativo, antivirus, etc.)
+# que interceptan TLS y presentan certificados firmados por una CA local.
+#
+# INSTRUCCIONES (solo si tu entorno tiene SSL inspection):
+#   1. Exportá la CA raíz de tu proxy como archivo PEM:
+#        Windows: Get-ChildItem Cert:\LocalMachine | Export-Certificate -FilePath proxy-ca.pem -Type CERT
+#        O usá el script PowerShell de diagnóstico documentado en el equipo.
+#   2. Copiá ese archivo a la raíz del proyecto como proxy-ca.pem
+#   3. Copiá este archivo a docker-compose.override.yml (ignorado por git):
+#        cp docker-compose.override.example.yml docker-compose.override.yml
+#   4. Ejecutá normalmente:
+#        docker compose up --build
+#
+# docker-compose.override.yml es auto-cargado por docker compose y se mergea
+# sobre docker-compose.yml. No es necesario ningún flag adicional.
+#
+# El secret se inyecta SOLO durante el build (--mount=type=secret en Dockerfile).
+# Nunca entra en capas de imagen ni en el contenedor en runtime.
+# En CI/cloud donde no existe proxy-ca.pem: no copiar este override → no-op.
+
+services:
+  app:
+    build:
+      secrets:
+        - proxy_ca
+
+secrets:
+  proxy_ca:
+    file: ./proxy-ca.pem

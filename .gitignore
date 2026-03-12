@@ -41,6 +41,14 @@ env/
 # ─── Claude Code (personal, no del equipo) ──────
 .claude/settings.local.json
 
+# ─── Infraestructura local — SSL inspection ─────
+# CA del proxy corporativo/antivirus del host. Solo necesaria en dev local
+# con SSL inspection. Se inyecta via BuildKit secret, nunca se commitea.
+proxy-ca.pem
+# Override local de docker-compose (activa el secret en dev con SSL inspection).
+# El ejemplo versionado es docker-compose.override.example.yml.
+docker-compose.override.yml
+
 # ─── OS ─────────────────────────────────────────
 .DS_Store
 Thumbs.db

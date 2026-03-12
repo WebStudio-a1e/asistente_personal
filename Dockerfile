@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -15,9 +16,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar código fuente
 COPY . .
 
-# Agregar CA del proxy SSL del host al bundle de certifi (httplib2 usa certifi
-# directamente, no el CA store del sistema).
-RUN if [ -f proxy-ca.pem ]; then python -c "import certifi; open(certifi.where(),'a').write(open('proxy-ca.pem').read())"; fi
+# Inyectar CA del proxy SSL local en el bundle de certifi.
+# httplib2 usa certifi directamente (no el CA store del sistema).
+# El secret es opcional: si no se provee (CI / cloud), este paso es no-op.
+# El archivo nunca entra en capas de imagen — solo existe durante este RUN.
+RUN --mount=type=secret,id=proxy_ca,required=false \
+    sh -c 'test -f /run/secrets/proxy_ca && python -c "import certifi; open(certifi.where(),\"a\").write(open(\"/run/secrets/proxy_ca\").read())" || true'
 
 # Puerto expuesto
 EXPOSE 8000
