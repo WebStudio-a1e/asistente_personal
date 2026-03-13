@@ -106,6 +106,18 @@ class TestReportingNoConfirmation:
         from src.agents.reporting_agent import reporting_agent_node as real_node
         assert graph_module.reporting_agent_node is real_node
 
+    def test_agentes_persistentes_en_graph_son_implementaciones_reales(self):
+        """Los 4 nodos persistentes en graph.py son implementaciones reales, no placeholders."""
+        from src.graph import graph as graph_module
+        from src.agents.tasks_agent import tasks_agent_node as real_tasks
+        from src.agents.ideas_agent import ideas_agent_node as real_ideas
+        from src.agents.agenda_agent import agenda_agent_node as real_agenda
+        from src.agents.accounting_agent import accounting_agent_node as real_accounting
+        assert graph_module.tasks_agent_node is real_tasks
+        assert graph_module.ideas_agent_node is real_ideas
+        assert graph_module.agenda_agent_node is real_agenda
+        assert graph_module.accounting_agent_node is real_accounting
+
 
 # ── Flujo completo query → respuesta ─────────────────────────────────────────
 

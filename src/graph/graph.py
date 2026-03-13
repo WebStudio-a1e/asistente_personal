@@ -14,8 +14,12 @@ Entry point: orchestrator.
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, StateGraph
 
+from src.agents.accounting_agent import accounting_agent_node
+from src.agents.agenda_agent import agenda_agent_node
+from src.agents.ideas_agent import ideas_agent_node
 from src.agents.orchestrator import orchestrator_node
 from src.agents.reporting_agent import reporting_agent_node
+from src.agents.tasks_agent import tasks_agent_node
 from src.config import load_config
 from src.graph.confirmation_node import confirmation_node
 from src.graph.state import AgentState
@@ -23,22 +27,6 @@ from src.storage.sqlite import create_tables, get_connection
 
 
 # ── Nodos placeholder (FASE_2+) ───────────────────────────────
-
-
-def tasks_agent_node(state: AgentState) -> dict:
-    return {}
-
-
-def ideas_agent_node(state: AgentState) -> dict:
-    return {}
-
-
-def agenda_agent_node(state: AgentState) -> dict:
-    return {}
-
-
-def accounting_agent_node(state: AgentState) -> dict:
-    return {}
 
 
 def persist_node(state: AgentState) -> dict:
