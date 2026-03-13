@@ -113,7 +113,13 @@ async def webhook(
     timestamp = form.get("DateCreated", "")
     body = form.get("Body", "")
 
+    logger.info(
+        "webhook: mensaje entrante — sid=%s from=%s body=%.120r",
+        message_sid, from_number, body,
+    )
+
     idem_key = _idempotency_key(message_sid, from_number, timestamp, body)
+    logger.info("webhook: idempotency_key=%s", idem_key)
 
     # Dedupe: consultar processed_events
     existing = conn.execute(
@@ -133,6 +139,7 @@ async def webhook(
         )
 
     # Invocar el grafo — thread_id = From (número de WhatsApp del remitente)
+    logger.info("webhook: invocando grafo — thread_id=%s", from_number)
     try:
         result = graph.invoke(
             {
@@ -144,16 +151,32 @@ async def webhook(
             config={"configurable": {"thread_id": from_number}},
         )
         agent_response = result.get("agent_response")
+        logger.info(
+            "webhook: grafo finalizado — nodo_final=reporting_agent agent_response=%s",
+            repr(agent_response[:120]) if agent_response else "<vacío>",
+        )
     except Exception as exc:
         logger.exception("webhook: error en graph.invoke — %s", exc)
         agent_response = "Error interno. Por favor intentá de nuevo."
+
     if agent_response and twilio_client:
-        send_whatsapp_message(
-            twilio_client,
-            body=agent_response,
-            to=from_number,
-            from_=form.get("To", ""),
+        logger.info(
+            "webhook: enviando respuesta Twilio — to=%s from=%s",
+            from_number, form.get("To", ""),
         )
+        try:
+            send_whatsapp_message(
+                twilio_client,
+                body=agent_response,
+                to=from_number,
+                from_=form.get("To", ""),
+            )
+        except Exception as exc:
+            logger.exception("webhook: error al enviar Twilio — %s", exc)
+    elif not agent_response:
+        logger.warning("webhook: agent_response vacío — no se envía mensaje")
+    elif not twilio_client:
+        logger.warning("webhook: twilio_client no disponible — no se envía mensaje")
 
     logger.info("webhook: mensaje procesado — from=%s key=%s", from_number, idem_key)
     return {"status": "ok"}
