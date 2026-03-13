@@ -17,6 +17,7 @@ from langgraph.graph import END, StateGraph
 from src.agents.orchestrator import orchestrator_node
 from src.agents.reporting_agent import reporting_agent_node
 from src.config import load_config
+from src.graph.confirmation_node import confirmation_node
 from src.graph.state import AgentState
 from src.storage.sqlite import create_tables, get_connection
 
@@ -37,10 +38,6 @@ def agenda_agent_node(state: AgentState) -> dict:
 
 
 def accounting_agent_node(state: AgentState) -> dict:
-    return {}
-
-
-def confirmation_node(state: AgentState) -> dict:
     return {}
 
 
